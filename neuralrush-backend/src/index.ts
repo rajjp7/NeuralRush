@@ -1,19 +1,13 @@
-import express  from 'express';
-
-import {config} from './config/env';
+import express, { Request, Response } from 'express';
+import authRoutes from './routes/auth.routes'; // <-- Import the new router
 
 const app = express();
 
 app.use(express.json());
 
-app.get('/api/health', (req,res ) => {
-  res.status(200).json({
-    status: 'healthy',
-    environment: config.nodeEnv,
-    timestamp: new Date().toISOString()
-  });
-});
+app.use('/api/auth', authRoutes); // <-- All auth routes now start with /api/auth
 
-app.listen(config.port, () => {
-  console.log(`🚀 Server running in ${config.nodeEnv} mode on port ${config.port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running in development mode on port ${PORT}`);
 });
