@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 
 declare global {
@@ -5,7 +6,7 @@ declare global {
 }
 
 export const db = global.prismaInstance || new PrismaClient({
-  log: ['warn', 'error'], 
+  log: ['warn', 'error'],
 });
 
 if (process.env.NODE_ENV !== 'production') {
