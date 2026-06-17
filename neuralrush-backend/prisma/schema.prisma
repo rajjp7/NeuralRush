@@ -3,6 +3,355 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────
+
+enum ModuleType {
+  MEMORY
+  FOCUS
+  LOGIC
+  SPEED
+  CREATIVITY
+  LANGUAGE
+}
+
+enum ExerciseType {
+  MEMORY_MATRIX
+  NUMBER_RECALL
+  WORD_PAIRS
+  SPATIAL_RECALL
+  STROOP
+  DUAL_N_BACK
+  SPOT_DIFFERENCE
+  LOGIC_GRID
+  PATTERN_COMPLETION
+  RIDDLE
+  RAPID_SORT
+  REACTION_TEST
+  QUICK_MATH
+  WORD_HUNT
+  ALTERNATIVE_USES
+  WORD_CHAIN
+  STORY_SEED
+  VOCABULARY
+  SENTENCE_UNSCRAMBLE
+  ANALOGIES
+}
+
+enum Rarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum ClanRole {
+  MEMBER
+  OFFICER
+  LEADER
+}
+
+enum BattleStatus {
+  PENDING
+  ACTIVE
+  COMPLETE
+  EXPIRED
+}
+
+enum DifficultyTier {
+  NORMAL
+  HARD
+  EXPERT
+}
+
+// ─── Models ──────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  name         String?
+  passwordHash String?
+  googleId     String?  @unique
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Gamification fields — stored on User for fast reads
+  xp             Int @default(0)
+  level          Int @default(1)
+  neuralPoints   Int @default(0)
+  currentStreak  Int @default(0)
+  longestStreak  Int @default(0)
+  lastTrainedAt  DateTime?
+  streakShields  Int @default(0)
+  totalSessions  Int @default(0)
+  totalXpEarned  Int @default(0)
+
+  // Relations
+  refreshTokens           RefreshToken[]
+  brainProfile            BrainProfile?
+  trainingSessions        TrainingSession[]
+  dailyChallengeCompletions DailyChallengeCompletion[]
+  userAchievements        UserAchievement[]
+  clanMembership          ClanMember?
+  challengesSent          Battle[]       @relation("Challenger")
+  challengesReceived      Battle[]       @relation("Challenged")
+  battlesWon              Battle[]       @relation("Winner")
+  battleRecord            BattleRecord?
+  waitlistEntry           Waitlist?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model BrainProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  memory     Float    @default(0)
+  focus      Float    @default(0)
+  logic      Float    @default(0)
+  speed      Float    @default(0)
+  creativity Float    @default(0)
+  language   Float    @default(0)
+  humanScore Float    @default(0)
+  updatedAt  DateTime @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots BrainSnapshot[]
+
+  @@map("brain_profiles")
+}
+
+model BrainSnapshot {
+  id         String   @id @default(cuid())
+  profileId  String
+  memory     Float
+  focus      Float
+  logic      Float
+  speed      Float
+  creativity Float
+  language   Float
+  humanScore Float
+  takenAt    DateTime @default(now())
+
+  profile BrainProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("brain_snapshots")
+}
+
+model Exercise {
+  id            String       @id @default(cuid())
+  module        ModuleType
+  type          ExerciseType
+  difficulty    Int
+  content       Json
+  correctAnswer Json?
+  explanation   String?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+
+  sessionExercises SessionExercise[]
+  dailyChallengeExercises DailyChallengeExercise[]
+
+  @@map("exercises")
+}
+
+model TrainingSession {
+  id              String     @id @default(cuid())
+  userId          String
+  module          ModuleType
+  difficulty      Int
+  score           Float
+  accuracy        Float
+  durationMs      Int
+  xpEarned        Int
+  npEarned        Int
+  isDailyChallenge Boolean   @default(false)
+  difficultyBefore Int
+  difficultyAfter  Int
+  completedAt     DateTime   @default(now())
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises SessionExercise[]
+
+  @@map("training_sessions")
+}
+
+model SessionExercise {
+  id              String  @id @default(cuid())
+  sessionId       String
+  exerciseId      String
+  userAnswer      Json
+  isCorrect       Boolean
+  timeTakenMs     Int
+  creativityScore Float?
+
+  session  TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise Exercise        @relation(fields: [exerciseId], references: [id])
+
+  @@map("session_exercises")
+}
+
+model DailyChallenge {
+  id        String        @id @default(cuid())
+  date      DateTime      @unique
+  module    ModuleType
+  tier      DifficultyTier @default(NORMAL)
+  createdAt DateTime      @default(now())
+
+  exercises   DailyChallengeExercise[]
+  completions DailyChallengeCompletion[]
+
+  @@map("daily_challenges")
+}
+
+model DailyChallengeExercise {
+  id          String @id @default(cuid())
+  challengeId String
+  exerciseId  String
+  order       Int
+
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  exercise  Exercise       @relation(fields: [exerciseId], references: [id])
+
+  @@map("daily_challenge_exercises")
+}
+
+model DailyChallengeCompletion {
+  id          String   @id @default(cuid())
+  userId      String
+  challengeId String
+  score       Float
+  xpEarned    Int
+  npEarned    Int
+  completedAt DateTime @default(now())
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, challengeId])
+
+  @@map("daily_challenge_completions")
+}
+
+model Achievement {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  title       String
+  description String
+  rarity      Rarity
+  xpReward    Int
+  npReward    Int
+  isHidden    Boolean @default(false)
+  iconKey     String?
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+
+  @@map("user_achievements")
+}
+
+model Clan {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  emblemKey   String?
+  weeklyXP    Int      @default(0)
+  totalXP     Int      @default(0)
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  members ClanMember[]
+
+  @@map("clans")
+}
+
+model ClanMember {
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  clanId   String
+  role     ClanRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clan Clan @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@map("clan_members")
+}
+
+model Battle {
+  id              String       @id @default(cuid())
+  challengerId    String
+  challengedId    String
+  module          ModuleType
+  status          BattleStatus @default(PENDING)
+  winnerId        String?
+  challengerScore Float?
+  challengedScore Float?
+  xpReward        Int          @default(150)
+  createdAt       DateTime     @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  expiresAt       DateTime
+
+  challenger User  @relation("Challenger", fields: [challengerId], references: [id])
+  challenged User  @relation("Challenged", fields: [challengedId], references: [id])
+  winner     User? @relation("Winner", fields: [winnerId], references: [id])
+
+  @@map("battles")
+}
+
+model BattleRecord {
+  id         String @id @default(cuid())
+  userId     String @unique
+  wins       Int    @default(0)
+  losses     Int    @default(0)
+  draws      Int    @default(0)
+  winStreak  Int    @default(0)
+  totalXpWon Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("battle_records")
+}
+
+model Waitlist {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  userId    String?  @unique
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("waitlist")
 }
